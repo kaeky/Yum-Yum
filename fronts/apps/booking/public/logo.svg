@@ -1,0 +1,27 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="100" cy="100" r="90" fill="url(#gradient)" />
+
+  <!-- Fork and Spoon forming "Y" -->
+  <g transform="translate(100, 100)">
+    <!-- Fork (left side of Y) -->
+    <path d="M -25 -40 L -30 -20 L -30 20 L -25 20 L -25 -20 L -20 -40 Z" fill="white"/>
+    <path d="M -35 -40 L -30 -30 L -25 -40 Z" fill="white"/>
+    <path d="M -40 -40 L -35 -30 L -30 -40 Z" fill="white"/>
+
+    <!-- Spoon (right side of Y) -->
+    <ellipse cx="25" cy="-30" rx="8" ry="12" fill="white"/>
+    <path d="M 20 -20 L 20 20 L 30 20 L 30 -20 Z" fill="white"/>
+
+    <!-- Stem of Y (connecting piece) -->
+    <rect x="-5" y="10" width="10" height="35" rx="5" fill="white"/>
+  </g>
+
+  <!-- Gradient Definition -->
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

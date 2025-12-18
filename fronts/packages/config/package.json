@@ -1,0 +1,22 @@
+{
+  "name": "@yumyum/config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./index.js",
+  "files": [
+    "eslint",
+    "tailwind"
+  ],
+  "scripts": {
+    "clean": "rm -rf node_modules"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.2",
+    "eslint-config-next": "16.0.10",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3"
+  }
+}

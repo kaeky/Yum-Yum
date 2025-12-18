@@ -1,0 +1,52 @@
+{
+  "name": "yumyum",
+  "version": "1.0.0",
+  "private": true,
+  "description": "YumYum - Sistema integral de gestión de reservas y experiencia del cliente",
+  "workspaces": [
+    "fronts/apps/*",
+    "fronts/packages/*",
+    "back/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel --no-daemon",
+    "dev:admin": "pnpm --filter @yumyum/admin dev",
+    "dev:booking": "pnpm --filter @yumyum/booking dev",
+    "dev:dashboard": "pnpm --filter @yumyum/dashboard dev",
+    "dev:api": "pnpm --filter @yumyum/api dev",
+    "build": "turbo run build",
+    "build:fronts": "turbo run build --filter='./fronts/**'",
+    "build:api": "pnpm --filter @yumyum/api build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
+    "@types/node": "^25.0.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.4",
+    "turbo": "^2.6.3",
+    "typescript": "^5.9.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}

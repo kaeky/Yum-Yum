@@ -1,0 +1,36 @@
+{
+  "buildCommand": "cd ../../../ && pnpm turbo run build --filter=@yumyum/dashboard",
+  "installCommand": "cd ../../../ && pnpm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@api_url",
+    "NEXT_PUBLIC_APP_URL": "@dashboard_app_url",
+    "NEXT_PUBLIC_SOCKET_URL": "@socket_url"
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
+}

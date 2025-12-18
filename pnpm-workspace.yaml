@@ -1,0 +1,4 @@
+packages:
+  - 'fronts/apps/*'
+  - 'fronts/packages/*'
+  - 'back/*'

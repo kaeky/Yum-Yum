@@ -1,0 +1,22 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install"
+
+[deploy]
+startCommand = "pnpm --filter @yumyum/api start:prod"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[[services]]
+name = "yumyum-api"
+source = "back/api"
+
+[services.healthcheck]
+path = "/api/health"
+timeout = 100
+
+[services.env]
+NODE_ENV = "production"
+PORT = { default = "4000" }
