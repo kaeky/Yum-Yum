@@ -21,16 +21,8 @@ interface RestaurantCardProps {
 }
 
 export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
-  // For local development, use query param. For production, use subdomain
-  const getRestaurantUrl = () => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('localhost')) {
-      // Local: use query param
-      return `/?restaurant=${restaurant.slug}`;
-    } else {
-      // Production: use subdomain
-      return `https://${restaurant.slug}.yumyum.com`;
-    }
-  };
+  // Use dynamic route for restaurant detail page
+  const restaurantUrl = `/${restaurant.slug}`;
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-orange-100">
@@ -89,7 +81,7 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
             <div className="flex items-center space-x-1">
               <span className="text-yellow-500 text-lg">⭐</span>
               <span className="text-lg font-bold text-gray-900">
-                {restaurant.rating.toFixed(1)}
+                {Number(restaurant.rating).toFixed(1)}
               </span>
             </div>
             <span className="text-sm text-gray-500">({restaurant.reviewCount} reseñas)</span>
@@ -97,7 +89,7 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
         </div>
 
         {/* Action Button */}
-        <Link href={getRestaurantUrl()} className="block">
+        <Link href={restaurantUrl} className="block">
           <Button
             className="w-full bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700"
             disabled={!restaurant.isActive}

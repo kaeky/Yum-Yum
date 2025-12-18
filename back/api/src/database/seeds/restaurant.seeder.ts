@@ -59,10 +59,19 @@ export class RestaurantSeeder {
       settings: {
         acceptReservations: true,
         requireDeposit: false,
+        depositAmount: 10,
+        depositThreshold: 6,
         cancellationPolicy: '24h',
         maxPartySize: 12,
         minAdvanceBooking: 1,
         maxAdvanceBooking: 60,
+        enablePreOrder: false,
+        enableTableOrdering: false,
+        theme: {
+          primaryColor: '#0ea5e9', // sky-500
+          secondaryColor: '#06b6d4', // cyan-500
+          fontFamily: 'Inter',
+        },
       },
       ownerId: owner.id,
       isActive: true,
@@ -217,5 +226,30 @@ export class RestaurantSeeder {
     }
 
     console.log('  ✅ Created 8 menu items');
+
+    // Seed time slots for the restaurant
+    const timeSlotRepository = dataSource.getRepository('TimeSlot');
+
+    const timeSlots = [
+      { dayOfWeek: 'monday', openTime: '13:00', closeTime: '23:30', isActive: true },
+      { dayOfWeek: 'tuesday', openTime: '13:00', closeTime: '23:30', isActive: true },
+      { dayOfWeek: 'wednesday', openTime: '13:00', closeTime: '23:30', isActive: true },
+      { dayOfWeek: 'thursday', openTime: '13:00', closeTime: '23:30', isActive: true },
+      { dayOfWeek: 'friday', openTime: '13:00', closeTime: '00:30', isActive: true },
+      { dayOfWeek: 'saturday', openTime: '13:00', closeTime: '00:30', isActive: true },
+      { dayOfWeek: 'sunday', openTime: '13:00', closeTime: '23:00', isActive: true },
+    ];
+
+    for (const slotData of timeSlots) {
+      const timeSlot = timeSlotRepository.create({
+        ...slotData,
+        restaurantId: restaurant.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await timeSlotRepository.save(timeSlot);
+    }
+
+    console.log('  ✅ Created 7 time slots (Mon-Sun)');
   }
 }

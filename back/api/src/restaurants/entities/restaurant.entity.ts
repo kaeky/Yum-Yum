@@ -15,16 +15,31 @@ export interface OpeningHours {
   sunday: { open: string; close: string; closed: boolean };
 }
 
+export interface ThemeSettings {
+  primaryColor?: string;
+  secondaryColor?: string;
+  fontFamily?: string;
+}
+
 export interface RestaurantSettings {
+  // Reservation settings
   acceptReservations: boolean;
   requireDeposit: boolean;
   depositAmount?: number;
+  depositThreshold?: number; // Party size threshold for deposit
   cancellationPolicy: string;
   maxPartySize: number;
   minAdvanceBooking: number; // hours
   maxAdvanceBooking: number; // days
   autoConfirmReservations?: boolean;
   allowWaitlist?: boolean;
+
+  // Feature flags
+  enablePreOrder?: boolean;
+  enableTableOrdering?: boolean;
+
+  // White-label theme
+  theme?: ThemeSettings;
 }
 
 @Entity('restaurants')

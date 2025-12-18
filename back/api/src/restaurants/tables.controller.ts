@@ -93,4 +93,15 @@ export class TablesController {
   async remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     await this.tablesService.remove(id, req.user.id, req.user.role);
   }
+
+  @Get(':id/qrcode')
+  @Roles(UserRole.RESTAURANT_OWNER, UserRole.RESTAURANT_STAFF, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Generate QR code for table' })
+  async generateQRCode(@Param('id') id: string) {
+    const qrcode = await this.tablesService.generateQRCode(id);
+    return {
+      success: true,
+      data: { qrcode },
+    };
+  }
 }

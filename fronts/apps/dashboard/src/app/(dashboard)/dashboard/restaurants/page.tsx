@@ -137,7 +137,7 @@ export default function RestaurantsPage() {
                 <div className="flex items-center space-x-4 mb-4 text-sm">
                   <div className="flex items-center space-x-1">
                     <span className="text-yellow-500">⭐</span>
-                    <span className="font-medium">{restaurant.rating.toFixed(1)}</span>
+                    <span className="font-medium">{Number(restaurant.rating).toFixed(1)}</span>
                     <span className="text-gray-500">({restaurant.reviewCount})</span>
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export default function RestaurantsPage() {
               <p className="text-3xl font-bold text-yellow-600">
                 {restaurants.length > 0
                   ? (
-                      restaurants.reduce((acc, r) => acc + r.rating, 0) / restaurants.length
+                      restaurants.reduce((acc, r) => acc + Number(r.rating), 0) / restaurants.length
                     ).toFixed(1)
                   : '0.0'}
               </p>
