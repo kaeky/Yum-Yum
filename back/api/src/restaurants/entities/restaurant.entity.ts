@@ -80,6 +80,9 @@ export class Restaurant extends BaseEntity {
   @Column({ type: 'varchar', length: 20 })
   postalCode: string;
 
+  @Column({ type: 'varchar', length: 50, default: 'UTC' })
+  timezone: string; // IANA timezone (e.g., 'America/Bogota', 'Europe/Madrid')
+
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   latitude?: number;
 

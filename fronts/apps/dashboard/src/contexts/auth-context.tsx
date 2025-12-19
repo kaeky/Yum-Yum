@@ -14,6 +14,7 @@ interface User {
   avatar?: string;
   isActive: boolean;
   isEmailVerified: boolean;
+  restaurantId?: string;
 }
 
 interface AuthContextType {

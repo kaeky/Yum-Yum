@@ -41,6 +41,7 @@ export class RestaurantSeeder {
       state: 'Madrid',
       country: 'España',
       postalCode: '28013',
+      timezone: 'Europe/Madrid', // Set correct timezone for Madrid
       latitude: 40.4168,
       longitude: -3.7038,
       priceRange: '€€',

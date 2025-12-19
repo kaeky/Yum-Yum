@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button, Badge, Card, CardContent } from '@yumyum/ui';
 import api from '@/lib/api';
 import Link from 'next/link';
+import { ReservationForm } from '@/components/reservation-form';
 
 interface ThemeSettings {
   primaryColor?: string;
@@ -44,11 +45,13 @@ interface Restaurant {
 
 export default function RestaurantDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params?.slug as string;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showReservationForm, setShowReservationForm] = useState(false);
 
   useEffect(() => {
     if (slug) {
@@ -168,6 +171,7 @@ export default function RestaurantDetailPage() {
                 size="lg"
                 style={{ backgroundColor: primaryColor }}
                 className="text-white hover:opacity-90"
+                onClick={() => setShowReservationForm(true)}
               >
                 Reservar Ahora
               </Button>
@@ -181,6 +185,20 @@ export default function RestaurantDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Main Info */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Reservation Form */}
+            {showReservationForm && (
+              <div id="reservation-form">
+                <ReservationForm
+                  restaurantId={restaurant.id}
+                  restaurantName={restaurant.name}
+                  maxPartySize={restaurant.settings?.maxPartySize || 12}
+                  onSuccess={reservation => {
+                    // Navigate to confirmation page
+                    router.push(`/reservation/${reservation.id}`);
+                  }}
+                />
+              </div>
+            )}
             {/* Description */}
             <Card>
               <CardContent className="p-6">
@@ -264,15 +282,24 @@ export default function RestaurantDetailPage() {
       </div>
 
       {/* Floating Reserve Button (Mobile) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg">
-        <Button
-          size="lg"
-          className="w-full text-white hover:opacity-90"
-          style={{ backgroundColor: primaryColor }}
-        >
-          Reservar Ahora
-        </Button>
-      </div>
+      {!showReservationForm && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg">
+          <Button
+            size="lg"
+            className="w-full text-white hover:opacity-90"
+            style={{ backgroundColor: primaryColor }}
+            onClick={() => {
+              setShowReservationForm(true);
+              // Scroll to form
+              setTimeout(() => {
+                document.getElementById('reservation-form')?.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            }}
+          >
+            Reservar Ahora
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

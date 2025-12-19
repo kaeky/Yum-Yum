@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { CheckAvailabilityDto } from './dto/check-availability.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -94,6 +95,7 @@ export class ReservationsController {
   }
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: 'Get reservation by ID' })
   async findOne(@Param('id') id: string) {
     const reservation = await this.reservationsService.findOne(id);
@@ -182,6 +184,24 @@ export class ReservationsController {
     return {
       success: true,
       data: { reservation },
+    };
+  }
+
+  @Get('restaurants/:restaurantId/availability')
+  @Public()
+  @ApiOperation({ summary: 'Check availability for a restaurant' })
+  async checkAvailability(
+    @Param('restaurantId') restaurantId: string,
+    @Query() checkAvailabilityDto: CheckAvailabilityDto
+  ) {
+    const availability = await this.reservationsService.getAvailability(
+      restaurantId,
+      new Date(checkAvailabilityDto.date),
+      checkAvailabilityDto.partySize
+    );
+    return {
+      success: true,
+      data: availability,
     };
   }
 }

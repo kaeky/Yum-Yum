@@ -6,13 +6,17 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, DataSource } from 'typeorm';
 import { Reservation, ReservationStatus } from './entities/reservation.entity';
 import { Restaurant } from '../restaurants/entities/restaurant.entity';
 import { Table } from '../restaurants/entities/table.entity';
+import { TimeSlot } from '../restaurants/entities/time-slot.entity';
+import { User, UserRole } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
+import { EventsGateway } from '../gateways/events.gateway';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
-import { addMinutes, subMinutes, startOfDay, endOfDay } from 'date-fns';
+import { addMinutes, subMinutes, startOfDay, endOfDay, format, parse, getDay } from 'date-fns';
 
 @Injectable()
 export class ReservationsService {
@@ -22,7 +26,14 @@ export class ReservationsService {
     @InjectRepository(Restaurant)
     private restaurantRepository: Repository<Restaurant>,
     @InjectRepository(Table)
-    private tableRepository: Repository<Table>
+    private tableRepository: Repository<Table>,
+    @InjectRepository(TimeSlot)
+    private timeSlotRepository: Repository<TimeSlot>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    private usersService: UsersService,
+    private eventsGateway: EventsGateway,
+    private dataSource: DataSource
   ) {}
 
   async create(
@@ -42,6 +53,30 @@ export class ReservationsService {
       throw new BadRequestException('This restaurant is not accepting reservations');
     }
 
+    // Auto-create or find customer if not authenticated
+    let finalCustomerId = customerId;
+    if (!customerId && createReservationDto.customerEmail) {
+      // Check if customer already exists
+      let customer = await this.userRepository.findOne({
+        where: { email: createReservationDto.customerEmail },
+      });
+
+      // Create customer if doesn't exist
+      if (!customer) {
+        const [firstName, ...lastNameParts] = createReservationDto.customerName.split(' ');
+        customer = await this.usersService.create({
+          email: createReservationDto.customerEmail,
+          password: Math.random().toString(36).slice(-8), // Random password
+          firstName: firstName || 'Customer',
+          lastName: lastNameParts.join(' ') || '',
+          phone: createReservationDto.customerPhone,
+          role: UserRole.CUSTOMER,
+        });
+      }
+
+      finalCustomerId = customer.id;
+    }
+
     // Validate party size
     const { maxPartySize } = restaurant.settings;
     if (createReservationDto.partySize > maxPartySize) {
@@ -56,47 +91,126 @@ export class ReservationsService {
       throw new BadRequestException('Cannot create reservation in the past');
     }
 
-    // Check availability if table is specified
-    if (createReservationDto.tableId) {
-      const table = await this.tableRepository.findOne({
-        where: { id: createReservationDto.tableId, restaurantId },
-      });
+    // Validate against advance booking settings
+    const { minAdvanceBooking, maxAdvanceBooking } = restaurant.settings;
+    const minDate = addMinutes(now, minAdvanceBooking * 60);
+    const maxDate = addMinutes(now, maxAdvanceBooking * 24 * 60);
 
-      if (!table) {
-        throw new NotFoundException('Table not found');
-      }
-
-      if (table.capacity < createReservationDto.partySize) {
-        throw new BadRequestException(
-          `Table capacity (${table.capacity}) is less than party size (${createReservationDto.partySize})`
-        );
-      }
-
-      const isAvailable = await this.checkTableAvailability(
-        createReservationDto.tableId,
-        reservationDate,
-        createReservationDto.estimatedDuration || 90
+    if (reservationDate < minDate) {
+      throw new BadRequestException(
+        `Reservations must be made at least ${minAdvanceBooking} hours in advance`
       );
+    }
 
-      if (!isAvailable) {
-        throw new ConflictException('Table is not available at this time');
+    if (reservationDate > maxDate) {
+      throw new BadRequestException(
+        `Reservations cannot be made more than ${maxAdvanceBooking} days in advance`
+      );
+    }
+
+    // Validate that the restaurant is open at this time
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayOfWeek = dayNames[getDay(reservationDate)];
+    const reservationTime = format(reservationDate, 'HH:mm');
+
+    const openTimeSlots = await this.timeSlotRepository.find({
+      where: {
+        restaurantId,
+        dayOfWeek: dayOfWeek as any,
+        isActive: true,
+      },
+    });
+
+    if (openTimeSlots.length === 0) {
+      throw new BadRequestException('Restaurant is closed on this day');
+    }
+
+    // Check if reservation time falls within any time slot
+    let isWithinTimeSlot = false;
+    for (const slot of openTimeSlots) {
+      const [resHour, resMinute] = reservationTime.split(':').map(Number);
+      const [openHour, openMinute] = slot.openTime.split(':').map(Number);
+      const [closeHour, closeMinute] = slot.closeTime.split(':').map(Number);
+
+      const resMinutes = resHour * 60 + resMinute;
+      const openMinutes = openHour * 60 + openMinute;
+      let closeMinutes = closeHour * 60 + closeMinute;
+
+      // Handle overnight closing
+      if (closeMinutes <= openMinutes) {
+        closeMinutes += 24 * 60;
+      }
+
+      if (resMinutes >= openMinutes && resMinutes < closeMinutes) {
+        isWithinTimeSlot = true;
+        break;
       }
     }
 
-    // Generate confirmation code
-    const confirmationCode = this.generateConfirmationCode();
+    if (!isWithinTimeSlot) {
+      throw new BadRequestException('Restaurant is closed at this time');
+    }
 
-    const reservation = this.reservationRepository.create({
-      ...createReservationDto,
-      restaurantId,
-      customerId,
-      confirmationCode,
-      status: restaurant.settings?.autoConfirmReservations
-        ? ReservationStatus.CONFIRMED
-        : ReservationStatus.PENDING,
+    // Use transaction to prevent race conditions
+    return await this.dataSource.transaction('SERIALIZABLE', async transactionalEntityManager => {
+      // Check availability if table is specified (with lock)
+      if (createReservationDto.tableId) {
+        const table = await transactionalEntityManager.findOne(Table, {
+          where: { id: createReservationDto.tableId, restaurantId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!table) {
+          throw new NotFoundException('Table not found');
+        }
+
+        if (table.capacity < createReservationDto.partySize) {
+          throw new BadRequestException(
+            `Table capacity (${table.capacity}) is less than party size (${createReservationDto.partySize})`
+          );
+        }
+
+        // Check for conflicting reservations within transaction
+        const startTime = subMinutes(reservationDate, 15);
+        const endTime = addMinutes(
+          reservationDate,
+          createReservationDto.estimatedDuration || 90 + 15
+        );
+
+        const conflictingReservations = await transactionalEntityManager.count(Reservation, {
+          where: {
+            tableId: createReservationDto.tableId,
+            reservationDate: Between(startTime, endTime),
+            status: Between(ReservationStatus.CONFIRMED, ReservationStatus.SEATED),
+          },
+          lock: { mode: 'pessimistic_read' },
+        });
+
+        if (conflictingReservations > 0) {
+          throw new ConflictException('Table is not available at this time');
+        }
+      }
+
+      // Generate confirmation code
+      const confirmationCode = this.generateConfirmationCode();
+
+      const reservation = transactionalEntityManager.create(Reservation, {
+        ...createReservationDto,
+        restaurantId,
+        customerId: finalCustomerId,
+        confirmationCode,
+        status: restaurant.settings?.autoConfirmReservations
+          ? ReservationStatus.CONFIRMED
+          : ReservationStatus.PENDING,
+      });
+
+      const savedReservation = await transactionalEntityManager.save(reservation);
+
+      // Emit WebSocket event
+      this.eventsGateway.emitReservationCreated(restaurantId, savedReservation);
+
+      return savedReservation;
     });
-
-    return await this.reservationRepository.save(reservation);
   }
 
   async findAll(filters?: {
@@ -193,7 +307,12 @@ export class ReservationsService {
 
     Object.assign(reservation, updateReservationDto);
 
-    return await this.reservationRepository.save(reservation);
+    const updatedReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationUpdated(reservation.restaurantId, updatedReservation);
+
+    return updatedReservation;
   }
 
   async cancel(id: string, reason: string, userId: string, userRole: string): Promise<Reservation> {
@@ -221,7 +340,12 @@ export class ReservationsService {
     reservation.cancelledAt = new Date();
     reservation.cancellationReason = reason;
 
-    return await this.reservationRepository.save(reservation);
+    const cancelledReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationCancelled(reservation.restaurantId, cancelledReservation);
+
+    return cancelledReservation;
   }
 
   async confirm(id: string): Promise<Reservation> {
@@ -234,7 +358,12 @@ export class ReservationsService {
     reservation.status = ReservationStatus.CONFIRMED;
     reservation.confirmedAt = new Date();
 
-    return await this.reservationRepository.save(reservation);
+    const confirmedReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationConfirmed(reservation.restaurantId, confirmedReservation);
+
+    return confirmedReservation;
   }
 
   async seat(id: string): Promise<Reservation> {
@@ -247,7 +376,12 @@ export class ReservationsService {
     reservation.status = ReservationStatus.SEATED;
     reservation.seatedAt = new Date();
 
-    return await this.reservationRepository.save(reservation);
+    const seatedReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationSeated(reservation.restaurantId, seatedReservation);
+
+    return seatedReservation;
   }
 
   async complete(id: string): Promise<Reservation> {
@@ -260,7 +394,12 @@ export class ReservationsService {
     reservation.status = ReservationStatus.COMPLETED;
     reservation.completedAt = new Date();
 
-    return await this.reservationRepository.save(reservation);
+    const completedReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationCompleted(reservation.restaurantId, completedReservation);
+
+    return completedReservation;
   }
 
   async markNoShow(id: string): Promise<Reservation> {
@@ -268,7 +407,12 @@ export class ReservationsService {
 
     reservation.status = ReservationStatus.NO_SHOW;
 
-    return await this.reservationRepository.save(reservation);
+    const noShowReservation = await this.reservationRepository.save(reservation);
+
+    // Emit WebSocket event
+    this.eventsGateway.emitReservationNoShow(reservation.restaurantId, noShowReservation);
+
+    return noShowReservation;
   }
 
   private async checkTableAvailability(
@@ -288,6 +432,171 @@ export class ReservationsService {
     });
 
     return conflictingReservations === 0;
+  }
+
+  async getAvailability(
+    restaurantId: string,
+    date: Date,
+    partySize: number
+  ): Promise<{
+    date: Date;
+    availableSlots: {
+      time: string;
+      available: boolean;
+      tablesAvailable: number;
+      reason?: string;
+    }[];
+  }> {
+    // Get restaurant
+    const restaurant = await this.restaurantRepository.findOne({
+      where: { id: restaurantId },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(`Restaurant with ID ${restaurantId} not found`);
+    }
+
+    if (!restaurant.isActive || !restaurant.settings?.acceptReservations) {
+      throw new BadRequestException('This restaurant is not accepting reservations');
+    }
+
+    // Validate party size
+    const { maxPartySize, minAdvanceBooking, maxAdvanceBooking } = restaurant.settings;
+    if (partySize > maxPartySize) {
+      throw new BadRequestException(`Party size cannot exceed ${maxPartySize} guests`);
+    }
+
+    // Validate date range
+    const now = new Date();
+    const maxDate = addMinutes(now, maxAdvanceBooking * 24 * 60);
+
+    // For availability check, only validate that we're not checking a past day
+    // Individual time slots will be marked as unavailable if they're in the past
+    // or don't meet minAdvanceBooking requirement
+    const todayStart = startOfDay(now);
+    const requestedDayStart = startOfDay(date);
+
+    if (requestedDayStart < todayStart) {
+      throw new BadRequestException('Cannot check availability for past dates');
+    }
+
+    if (date > maxDate) {
+      throw new BadRequestException(
+        `Reservations cannot be made more than ${maxAdvanceBooking} days in advance`
+      );
+    }
+
+    // Get day of week
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayOfWeek = dayNames[getDay(date)];
+
+    // Get time slots for this day
+    const timeSlots = await this.timeSlotRepository.find({
+      where: {
+        restaurantId,
+        dayOfWeek: dayOfWeek as any,
+        isActive: true,
+      },
+    });
+
+    if (timeSlots.length === 0) {
+      return {
+        date,
+        availableSlots: [],
+      };
+    }
+
+    // Get all active tables
+    const tables = await this.tableRepository.find({
+      where: { restaurantId, isActive: true },
+    });
+
+    // Get all reservations for this day
+    const dayStart = startOfDay(date);
+    const dayEnd = endOfDay(date);
+    const reservations = await this.reservationRepository.find({
+      where: {
+        restaurantId,
+        reservationDate: Between(dayStart, dayEnd),
+        status: Between(ReservationStatus.CONFIRMED, ReservationStatus.SEATED),
+      },
+    });
+
+    // Generate time slots (every 30 minutes)
+    const availableSlots = [];
+    for (const timeSlot of timeSlots) {
+      const [openHour, openMinute] = timeSlot.openTime.split(':').map(Number);
+      const [closeHour, closeMinute] = timeSlot.closeTime.split(':').map(Number);
+
+      let currentTime = new Date(date);
+      currentTime.setHours(openHour, openMinute, 0, 0);
+
+      const closeTime = new Date(date);
+      closeTime.setHours(closeHour, closeMinute, 0, 0);
+
+      // If close time is before open time, it means it closes next day
+      if (closeTime < currentTime) {
+        closeTime.setDate(closeTime.getDate() + 1);
+      }
+
+      while (currentTime < closeTime) {
+        const timeString = format(currentTime, 'HH:mm');
+
+        // Check if this time is in the past
+        if (currentTime < now) {
+          availableSlots.push({
+            time: timeString,
+            available: false,
+            tablesAvailable: 0,
+            reason: 'Time has passed',
+          });
+          currentTime = addMinutes(currentTime, 30);
+          continue;
+        }
+
+        // Check if meets minimum advance booking requirement
+        const minDate = addMinutes(now, minAdvanceBooking * 60);
+        if (currentTime < minDate) {
+          availableSlots.push({
+            time: timeString,
+            available: false,
+            tablesAvailable: 0,
+            reason: `Reservations must be made at least ${minAdvanceBooking} hours in advance`,
+          });
+          currentTime = addMinutes(currentTime, 30);
+          continue;
+        }
+
+        // Count available tables for this time slot
+        let availableTables = 0;
+        for (const table of tables) {
+          if (table.capacity >= partySize) {
+            const isTableAvailable = await this.checkTableAvailability(
+              table.id,
+              currentTime,
+              90 // default duration
+            );
+            if (isTableAvailable) {
+              availableTables++;
+            }
+          }
+        }
+
+        availableSlots.push({
+          time: timeString,
+          available: availableTables > 0,
+          tablesAvailable: availableTables,
+          reason: availableTables === 0 ? 'No tables available' : undefined,
+        });
+
+        currentTime = addMinutes(currentTime, 30);
+      }
+    }
+
+    return {
+      date,
+      availableSlots,
+    };
   }
 
   private generateConfirmationCode(): string {

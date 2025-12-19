@@ -60,4 +60,40 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   emitToClient(clientId: string, event: string, data: any) {
     this.server.to(clientId).emit(event, data);
   }
+
+  // Reservation-specific events
+  emitReservationCreated(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:created', { reservation });
+    this.logger.log(`Reservation created event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationUpdated(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:updated', { reservation });
+    this.logger.log(`Reservation updated event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationCancelled(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:cancelled', { reservation });
+    this.logger.log(`Reservation cancelled event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationConfirmed(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:confirmed', { reservation });
+    this.logger.log(`Reservation confirmed event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationSeated(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:seated', { reservation });
+    this.logger.log(`Reservation seated event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationCompleted(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:completed', { reservation });
+    this.logger.log(`Reservation completed event emitted for restaurant ${restaurantId}`);
+  }
+
+  emitReservationNoShow(restaurantId: string, reservation: any) {
+    this.emitToRestaurant(restaurantId, 'reservation:no-show', { reservation });
+    this.logger.log(`Reservation no-show event emitted for restaurant ${restaurantId}`);
+  }
 }
